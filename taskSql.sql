@@ -1,4 +1,3 @@
---use BanksTask1
 ----Create tables and references
 --CREATE TABLE Banks 
 --(
@@ -227,31 +226,63 @@
 
 --Query 8                                                                           Не работает
 
---CREATE TRIGGER ControlEnterDataInBalance
---	ON Account
---	AFTER INSERT, UPDATE
---AS
---DECLARE @AccountBalance INT
---DECLARE @IdAccount INT
---DECLARE @CardBalance INT
---SELECT @AccountBalance = Balance, 
---		@IdAccount = IdAccount 
---FROM inserted
---SELECT @CardBalance = SUM(ClientCard.Balance) 
---FROM ClientCard 
---WHERE ClientCard.IdAccount = @IdAccount
---IF @AccountBalance = @CardBalance
---BEGIN
---	Update Account SET Balance = Account.Balance from inserted WHERE Account.IdAccount = @IdAccount
---	PRINT 'Successful'
---	COMMIT
---END
---ELSE
---BEGIN
---ROLLBACK TRANSACTION
---PRINT 'Data invalid'
---END
+CREATE TRIGGER ControlEnterDataInAccount
+	ON Account
+	AFTER INSERT, UPDATE
+AS
+DECLARE @msg_error NVARCHAR(50) = 'Data Invalid'
+BEGIN 
+	BEGIN TRANSACTION
+	BEGIN TRY
+		IF(EXISTS(
+			SELECT * FROM inserted
+			LEFT JOIN ClientCard ON ClientCard.IdAccount = inserted.IdAccount
+			GROUP BY inserted.IdAccount
+			HAVING MAX(inserted.Balance) < SUM(ClientCard.Balance)
+		))
+		BEGIN
+			RAISERROR(@msg_error,16,1) --I still dont understand what the last parameter is for.
+		END
+		COMMIT TRANSACTION
+	END TRY
+	BEGIN CATCH
+		ROLLBACK TRANSACTION
+	END CATCH
+END
+SELECT SUM(ClientCard.Balance) FROM ClientCard WHERE ClientCard.IdAccount = 1
+SELECT * FROM Account WHERE Account.IdAccount = 1
 
---UPDATE Account SET Balance = 190 WHERE IdAccount = 1;
+UPDATE Account SET Balance = 190 WHERE Account.IdAccount = 1
+DROP TRIGGER ControlEnterDataInClientCard
+CREATE TRIGGER ControlEnterDataInClientCard
+ON ClientCard
+	AFTER INSERT, UPDATE
+AS
+DECLARE @msg_error NVARCHAR(50) = 'Invalid Data'
+BEGIN
+	BEGIN TRANSACTION
+		BEGIN TRY
+			IF(EXISTS(
+				SELECT * FROM inserted
+				LEFT JOIN Account ON Account.IdAccount = inserted.IdAccount
+				LEFT JOIN ClientCard ON ClientCard.IdAccount = Account.IdAccount
+				GROUP BY inserted.IdAccount
+				HAVING SUM((ClientCard.Balance)) > MIN(Account.Balance)
+			))
+			BEGIN
+				RAISERROR(@msg_error,16,1);
+			END
+			COMMIT TRANSACTION
+		END TRY
+		BEGIN CATCH
+			ROLLBACK TRANSACTION
+		END CATCH
+END
 
+SELECT Sum(ClientCard.Balance) FROM ClientCard WHERE ClientCard.IdAccount = 1
+SELECT * FROM Account WHERE Account.IdAccount = 1
 
+SELECT * FROM ClientCard WHERE ClientCard.IdAccount = 1
+
+INSERT INTO ClientCard 
+VALUES (40, 1)
